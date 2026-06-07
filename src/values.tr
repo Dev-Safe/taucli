@@ -1,0 +1,10 @@
+from defs import FlagDef, ArgDef
+
+pub class FlagValue:
+    flag: FlagDef
+    is_present: bool
+    raw_slice: Option[Pointer[char]]
+
+pub class ArgValue:
+    param: ArgDef
+    raw_slice: Option[Pointer[char]]

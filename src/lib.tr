@@ -1,0 +1,4 @@
+from defs import CommandDef
+
+pub def parser() -> Command:
+    return Command()
