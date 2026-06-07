@@ -9,16 +9,16 @@ pub class Flag:
 extend Flag:
     pub def init(name: str, desc: str) -> Flag:
         mut flag = Flag()
-        # idx = name.index_of(",")
+        idx = name.index_of(",")
 
-        # if idx == -1
-        #     flag.name = name
-        # else:
-        #     flags = name.split(",")
-        #     flag.shorthand = Option.Some(f"{name.slice(0, idx)}")
-        #     flag.name = f"{name.slice(idx + 1, name.len())}"
+        if idx == -1
+            flag.name = name
+        else:
+            flags = name.split(",")
+            flag.shorthand = Option.Some(name.slice(0, idx))
+            flag.name = name.slice(idx + 1, name.len())
 
-        # flag.description = desc
+        flag.description = desc
         return flag
 
     pub def name(self, name: str) -> Flag:

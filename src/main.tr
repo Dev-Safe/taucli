@@ -4,6 +4,6 @@ from defs import Flag
 def main() -> int:
     p = parser()
         .description("Tauraro cli application")
-        .flag(Flag.toggle("help", "Show help"))
+        .toggle_flag("h,help", "Show help")
     print("Hello from taucli!: struct: ;")
     return 0
