@@ -63,8 +63,6 @@ extend Flag:
         flag.toggle = true
         return flag
 
-
-
 pub class Arg:
     name: str
     description: str
@@ -132,6 +130,7 @@ extend ArgValue:
         return argval
 
 pub class ParseResult:
+    matched_cmd: Command
     command_string: List[str]
     arguments: List[ArgValue]
     flags: List[FlagValue]
@@ -144,13 +143,37 @@ extend ParseResult:
         result.flags = List[FlagValue].init()
         return result
 
+    pub def handle(self) throws str -> int:
+        handler: Option[def(ParseResult) -> Result[int, str]] = self.matched_cmd.handler
+        if handler.is_some():
+            mut fn: def(ParseResult) -> Result[int, str] = handler.unwrap()
+            return fn(self)
+        else:
+            return Result.ok(-100)
+
+    pub def get_arg(self, name: str) -> Option[Pointer[ArgValue]]:
+        for arg in self.arguments:
+            if arg.param.name == name:
+                return Option.Some(arg)
+        return Option.None
+
+    pub def get_flag(self, name: str) -> Option[Pointer[FlagValue]]:
+        for flag in self.flags:
+            if flag.flag.name == name:
+                return Option.Some(flag)
+        return Option.None
+
+
+
+
+
 pub class Command:
     name: str
     description: str
     arguments: List[Arg]
     flags: List[Flag]
     subcommands: List[Command]
-    handler: Option[def(P)]
+    handler: Option[def(ParseResult) -> Result[int, str]]
 
 extend Command:
     pub def init(name: str, desc: str) -> Command:
@@ -160,6 +183,7 @@ extend Command:
         cmd.flags = List[Flag].init()
         cmd.arguments = List[Arg].init()
         cmd.subcommands = List[Command].init()
+        cmd.handler = Option.None
         return cmd
 
     pub def description(self, desc: str) -> Command:
@@ -178,6 +202,11 @@ extend Command:
         self.arguments.append(arg)
         return self
 
+    pub def handler(self, fn: lambda) -> Command:
+        self.handler = Option.Some(fn)
+        return self
+
+
 pub def parser(name: str, desc: str) -> Command:
     return Command.init(name, desc)
 
@@ -185,6 +214,7 @@ extend Command:
     pub def parse(self, args: List[str]) throws str -> ParseResult:
         mut cmd: List[str] = List[str].init()
         mut i: int = 0
+
         mut current_cmd: Command = self
         mut item: str = str()
 
@@ -198,6 +228,7 @@ extend Command:
                 if subcmd.name == item:
                     current_cmd = subcmd
                     found_cmd = true
+                    break
             if found_cmd:
                 cmd.append(f"{current_cmd.name}")
                 i += 1
@@ -208,7 +239,6 @@ extend Command:
         # parse arguments
         mut j: int = 0
 
-        # TODO: replace with for in
         while j < current_cmd.arguments.len():
             mut arg: Arg = current_cmd.arguments.get(j)
             if i >= args.len():
@@ -290,7 +320,6 @@ extend Command:
                 raise(f"Unexpected argument: {item}")
 
         # Populate defaults
-
         for f in current_cmd.flags:
             mut is_present: bool = false
             for parsed_flag in parsed.flags:
@@ -301,6 +330,6 @@ extend Command:
             if not is_present and f.default_value.is_some():
                 parsed.flags.append(FlagValue.init(f, false, f.default_value))
 
+        parsed.matched_cmd = current_cmd
+
         return Result.ok(parsed)
-    def describe(self):
-        pass
