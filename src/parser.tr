@@ -1,6 +1,0 @@
-from values import FlagValue, ArgValue
-
-pub class ParseResult:
-    command_name: str
-    arguments: List[ArgValue]
-    flags: List[FlagValue]

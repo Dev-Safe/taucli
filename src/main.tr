@@ -1,9 +1,20 @@
-from lib import parser
-from defs import Flag
+from lib import parser, Flag, Arg, Command, CommandParseResult
 
-def main() -> int:
-    p = parser()
-        .description("Tauraro cli application")
-        .toggle_flag("h,help", "Show help")
-    print("Hello from taucli!: struct: ;")
+def main(args: List[str]) -> int:
+    args.remove(0)
+    p: Result[CommandParseResult, str] = parser("taupkg", "Tauraro langauge package manager")
+        .subcommand(
+            Command.init("version", "Print taupkg version and exit")
+        )
+        .subcommand(
+            Command.init("init", "Create a new taupkg.toml in the current directory")
+                .arg(Arg.init("name", "The name of the project to initialize")
+                .optional(true))
+        ).subcommand(
+            Command.init("build", "Build the project")
+                .flag(Flag.toggle("r,release", "Make a production optimized build"))
+                .flag(Flag.str("o,output", "Specify ouput folder or binary name"))
+        ).subcommand(
+            Command.init("clean", "Clean build artifacts")
+        ).parse(args)
     return 0

@@ -1,4 +1,306 @@
-from defs import CommandDef
+pub class Flag:
+    name: str
+    description: str
+    shorthand: Option[str]
+    toggle: bool
+    default_value: Option[str]
+    matches: Option[str]
 
-pub def parser() -> Command:
-    return Command()
+extend Flag:
+    pub def init(name: str, desc: str) -> Flag:
+        mut flag: Flag = Flag()
+        mut idx: int = name.index_of(",")
+
+        if idx == -1:
+            flag.name = name
+        else:
+            mut flags: List[str] = name.split(",")
+            flag.shorthand = Option.Some(name.slice(0, idx))
+            flag.name = name.slice(idx + 1, name.len())
+
+        flag.description = desc
+        return flag
+
+    pub def name(self, name: str) -> Flag:
+        self.name = name
+        return self
+
+    pub def shorthand(self, shorthand: str) -> Flag:
+        self.shorthand = Option.Some(shorthand)
+        return self
+
+    pub def description(self, desc: str) -> Flag:
+        self.description = desc
+        return self
+
+    pub def as_toggle(self) -> Flag:
+        self.toggle = true
+        return self
+
+    pub def default_value(self, val: str) -> Flag:
+        self.default_value = Option.Some(val)
+        return self
+
+    pub def matches(self, matches: str) -> Flag:
+        self.matches = Option.Some(matches)
+        return self
+
+    @staticmethod
+    pub def int(name: str, desc: str) -> Flag:
+        mut flag: Flag = Flag.init(name, desc)
+        flag.matches = Option.Some("1234567890")
+        return flag
+
+    @staticmethod
+    pub def toggle(name: str, desc: str) -> Flag:
+        mut flag: Flag = Flag.init(name, desc)
+        flag.toggle = true
+        return flag
+
+    @staticmethod
+    pub def str(name: str, desc: str) -> Flag:
+        mut flag: Flag = Flag.init(name, desc)
+        flag.toggle = true
+        return flag
+
+
+
+pub class Arg:
+    name: str
+    description: str
+    variadic: bool
+    optional: bool
+    matches: Option[str]
+
+extend Arg:
+    pub def init(name: str, desc: str) -> Arg:
+        mut arg: Arg = Arg()
+        arg.name = name
+        arg.description = desc
+        return arg
+
+    pub def name(self, name: str) -> Arg:
+        self.name = name
+        return self
+
+    pub def description(self, desc: str) -> Arg:
+        self.description = desc
+        return self
+
+    pub def variadic(self, variadic: bool) -> Arg:
+        self.variadic = variadic
+        return self
+
+    pub def optional(self, optional: bool) -> Arg:
+        self.optional = optional
+        return self
+
+    @staticmethod
+    pub def number(name: str, desc: str) -> Arg:
+        mut arg: Arg = Arg.init(name, desc)
+        arg.matches = Option.Some("1234567890")
+        return arg
+
+    pub def validate(self, value: str) throws str:
+        pass
+
+
+pub class FlagValue:
+    flag: Flag
+    raw_slices: List[Pointer[char]]
+
+extend FlagValue:
+    pub def init(flag: Flag, is_present: bool, slice: Option[Pointer[char]]) -> FlagValue:
+        mut flag_val: FlagValue = FlagValue()
+        flag_val.flag = flag
+        flag_val.raw_slices = List[Pointer[char]].init()
+
+        if slice.is_some():
+            flag_val.raw_slices.append(slice.unwrap())
+
+        return flag_val
+
+pub class ArgValue:
+    param: Arg
+    raw_slice: Pointer[char]
+
+extend ArgValue:
+    pub def init(arg: Arg, value: Pointer[char]) -> ArgValue:
+        mut argval: ArgValue = ArgValue()
+        argval.param = arg
+        argval.raw_slice = value
+        return argval
+
+pub class ParseResult:
+    command_string: List[str]
+    arguments: List[ArgValue]
+    flags: List[FlagValue]
+
+extend ParseResult:
+    pub def init() -> ParseResult:
+        mut result: ParseResult = ParseResult()
+        result.command_string = List[str].init()
+        result.arguments = List[ArgValue].init()
+        result.flags = List[FlagValue].init()
+        return result
+
+pub class Command:
+    name: str
+    description: str
+    arguments: List[Arg]
+    flags: List[Flag]
+    subcommands: List[Command]
+    handler: Option[def(P)]
+
+extend Command:
+    pub def init(name: str, desc: str) -> Command:
+        mut cmd: Command = Command()
+        cmd.name = name
+        cmd.description = desc
+        cmd.flags = List[Flag].init()
+        cmd.arguments = List[Arg].init()
+        cmd.subcommands = List[Command].init()
+        return cmd
+
+    pub def description(self, desc: str) -> Command:
+        self.description = desc
+        return self
+
+    pub def flag(self, flag: Flag) -> Command:
+        self.flags.append(flag)
+        return self
+
+    pub def subcommand(self, subcommand: Command) -> Command:
+        self.subcommands.append(subcommand)
+        return self
+
+    pub def arg(self, arg: Arg) -> Command:
+        self.arguments.append(arg)
+        return self
+
+pub def parser(name: str, desc: str) -> Command:
+    return Command.init(name, desc)
+
+extend Command:
+    pub def parse(self, args: List[str]) throws str -> ParseResult:
+        mut cmd: List[str] = List[str].init()
+        mut i: int = 0
+        mut current_cmd: Command = self
+        mut item: str = str()
+
+        mut parsed: ParseResult = ParseResult.init()
+
+        # take the command name
+        while i < args.len():
+            item = args.get(i)
+            mut found_cmd: bool = false
+            for subcmd in current_cmd.subcommands:
+                if subcmd.name == item:
+                    current_cmd = subcmd
+                    found_cmd = true
+            if found_cmd:
+                cmd.append(f"{current_cmd.name}")
+                i += 1
+            else:
+                break
+        parsed.command_string = cmd
+
+        # parse arguments
+        mut j: int = 0
+
+        # TODO: replace with for in
+        while j < current_cmd.arguments.len():
+            mut arg: Arg = current_cmd.arguments.get(j)
+            if i >= args.len():
+                if arg.optional:
+                    j += 1
+                    continue
+                else:
+                    raise(f"Missing argument: {arg.name}: {arg.description}")
+            else:
+                arg.validate(args.get(i))?
+                parsed.arguments.append(ArgValue.init(arg, args.get(i)))
+                i += 1
+                j += 1
+
+        # parse flags
+        while i < args.len():
+            item = args.get(i)
+
+            if item == "--":
+                i += 1
+                break
+
+            mut is_long: bool = item.starts_with("--")
+            if is_long or item.starts_with("-"):
+                mut prefix_len: int = 1
+                if is_long:
+                    prefix_len = 2
+
+                mut flag_str: str = item.slice(prefix_len, item.len())
+                mut flag_val: Option[Pointer[char]] = Option[Pointer[char]].None()
+
+                if flag_str.contains("="):
+                    mut idx: int = flag_str.index_of("=")
+                    flag_val = Option.Some(flag_str.slice(idx + 1, flag_str.len()))
+                    flag_str = flag_str.slice(0, idx)
+
+                mut found_flag: Option[Flag] = Option[Flag].None()
+                for f in current_cmd.flags:
+                    if is_long and f.name == flag_str:
+                        found_flag = Option.Some(f)
+                        break
+
+                    if not is_long and f.shorthand.is_some():
+                        if f.shorthand.unwrap() == flag_str:
+                            found_flag = Option.Some(f)
+                            break
+
+                if found_flag.is_none():
+                    raise(f"Unknown flag: {item}")
+
+                mut flag_def: Flag = found_flag.unwrap()
+                mut slice_to_add: Option[Pointer[char]] = Option[Pointer[char]].None()
+
+                if flag_def.toggle:
+                    i += 1
+                else:
+                    if flag_val.is_some():
+                        slice_to_add = flag_val
+                        i += 1
+                    else:
+                        if i + 1 < args.len():
+                            slice_to_add = Option.Some(args.get(i + 1))
+                            i += 2
+                        else:
+                            raise(f"Flag '{item}' requires a value, but none was provided.")
+
+                mut already_parsed: bool = false
+                for parsed_flag in parsed.flags:
+                    if parsed_flag.flag.name == flag_def.name:
+                        already_parsed = true
+                        if slice_to_add.is_some():
+                            parsed_flag.raw_slices.append(slice_to_add.unwrap())
+                        break
+
+                if not already_parsed:
+                    parsed.flags.append(FlagValue.init(flag_def, true, slice_to_add))
+
+            else:
+                raise(f"Unexpected argument: {item}")
+
+        # Populate defaults
+
+        for f in current_cmd.flags:
+            mut is_present: bool = false
+            for parsed_flag in parsed.flags:
+                if parsed_flag.flag.name == f.name:
+                    is_present = true
+                    break
+
+            if not is_present and f.default_value.is_some():
+                parsed.flags.append(FlagValue.init(f, false, f.default_value))
+
+        return Result.ok(parsed)
+    def describe(self):
+        pass
