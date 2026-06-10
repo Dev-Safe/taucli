@@ -1,33 +1,13 @@
-from mod import parser, Flag, Arg, Command, ParseResult
+from mod import parser, Command, ParseResult
 
-
-def handle(cmd: ParseResult) -> Result[int, str]:
-    print("Hello world")
-    return Result.ok(0)
-
-def main(args: List[str]) -> int:
+def main(args:  List[str]) throws str -> int:
     args.remove(0)
-
-    p: Result[ParseResult, str] = parser("taupkg", "Tauraro langauge package manager")
+    result: Result[ParseResult, str] =  parser("taupkg", "Tauraro package manager")
         .subcommand(
-            Command.init("version", "Print taupkg version and exit")
-        )
-        .subcommand(
-            Command.init("init", "Create a new taupkg.toml in the current directory")
-                .arg(
-                    Arg.init("name", "The name of the project to initialize")
-                        .optional(true)
-                )
-                .handler(handle)
-        ).subcommand(
-            Command.init("build", "Build the project")
-                .flag(Flag.toggle("r,release", "Make a production optimized build"))
-                .flag(Flag.str("o,output", "Specify ouput folder or binary name"))
-        ).subcommand(
-            Command.init("clean", "Clean build artifacts")
+            Command.init("build", "Compile the project")
+                .opt_str_arg("target", "Target architecture")
+                .toggle_flag("r,release", "Compile in release mode")
+                .str_flag("o,output", "Output directory")
         ).parse(args)
-
-    result: ParseResult = p.unwrap()
-
-    result.handle()
-    return 0
+    ret: Result[int, str] = result.unwrap().handle()
+    return int(ret.unwrap())

@@ -1,0 +1,81 @@
+pub class ParseResult:
+    matched_cmd: Command
+    command_string: List[str]
+    arguments: List[ArgValue]
+    flags: List[FlagValue]
+    is_help: bool
+
+extend ParseResult:
+    pub def init() -> ParseResult:
+        mut result: ParseResult = ParseResult()
+        result.command_string = List[str].init()
+        result.arguments = List[ArgValue].init()
+        result.flags = List[FlagValue].init()
+        result.is_help = false
+        return result
+
+    pub def handle(self) throws str -> int:
+        if self.is_help:
+            self.matched_cmd.print_help(self.command_string)
+            return Result.ok(0)
+
+        mut handler: Option[def(ParseResult) -> Result[int, str]] = self.matched_cmd.handler
+        if handler.is_some():
+            mut fn: def(ParseResult) -> Result[int, str] = handler.unwrap()
+            return fn(self)
+        else:
+            if self.matched_cmd.subcommands.len() > 0:
+                self.matched_cmd.print_help(self.command_string)
+                return Result.ok(0)
+            return Result.ok(-100)
+
+    pub def get_arg_str(self, name: str) -> Option[Pointer[char]]:
+        for arg in self.arguments:
+            if arg.param.name == name:
+                return Option.Some(arg.raw_slice)
+        return Option[Pointer[char]].None()
+
+    pub def get_arg_int(self, name: str) -> Option[int]:
+        mut val: Option[str] = self.get_arg_str(name)
+        if val.is_some():
+            return Option.Some(val.unwrap().parse_int())
+        return Option[int].None()
+
+    # pub def get_arg_float(self, name: str) -> Option[float]:
+    #     mut val: Option[str] = self.get_arg_str(name)
+    #     if val.is_some():
+    #         return Option.Some(val.unwrap().parse_float())
+    #     return Option[float].None()
+
+    pub def has_flag(self, name: str) -> bool:
+        for flag in self.flags:
+            if flag.flag.name == name:
+                return true
+        return false
+
+    pub def get_flag_str(self, name: str) -> Option[Pointer[char]]:
+        for flag in self.flags:
+            if flag.flag.name == name:
+                if flag.raw_slices.len() > 0:
+                    return Option.Some(flag.raw_slices.get(0))
+        return Option[Pointer[char]].None()
+
+    pub def get_flag_list_str(self, name: str) -> Option[List[str]]:
+        for flag in self.flags:
+            if flag.flag.name == name:
+                if flag.raw_slices.len() > 0:
+                    return Option.Some(flag.raw_slices)
+        return Option[Pointer[char]].None()
+
+
+    pub def get_flag_int(self, name: str) -> Option[int]:
+        mut val: Option[str] = self.get_flag_str(name)
+        if val.is_some():
+            return Option.Some(val.unwrap().parse_int())
+        return Option[int].None()
+
+    # pub def get_flag_float(self, name: str) -> Option[float]:
+    #     mut val: Option[str] = self.get_flag_str(name)
+    #     if val.is_some():
+    #         return Option.Some(val.unwrap().parse_float())
+    #     return Option[float].None()

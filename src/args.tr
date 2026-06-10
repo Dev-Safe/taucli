@@ -1,0 +1,50 @@
+pub class Arg:
+    name: str
+    description: str
+    variadic: bool
+    optional: bool
+    matches: Option[str]
+
+extend Arg:
+    pub def init(name: str, desc: str) -> Arg:
+        mut arg: Arg = Arg()
+        arg.name = name
+        arg.description = desc
+        return arg
+
+    pub def name(self, name: str) -> Arg:
+        self.name = name
+        return self
+
+    pub def description(self, desc: str) -> Arg:
+        self.description = desc
+        return self
+
+    pub def variadic(self, variadic: bool) -> Arg:
+        self.variadic = variadic
+        return self
+
+    pub def optional(self, optional: bool) -> Arg:
+        self.optional = optional
+        return self
+
+    @staticmethod
+    pub def number(name: str, desc: str) -> Arg:
+        mut arg: Arg = Arg.init(name, desc)
+        arg.matches = Option.Some("1234567890")
+        return arg
+
+    pub def validate(self, value: str) throws str:
+        pass
+
+
+pub class ArgValue:
+    param: Arg
+    raw_slice: Pointer[char]
+
+extend ArgValue:
+    pub def init(arg: Arg, value: Pointer[char]) -> ArgValue:
+        mut argval: ArgValue = ArgValue()
+        argval.param = arg
+        argval.raw_slice = value
+        return argval

@@ -1,0 +1,269 @@
+pub class Command:
+    name: str
+    description: str
+    arguments: List[Arg]
+    flags: List[Flag]
+    subcommands: List[Command]
+    handler: Option[def(ParseResult) -> Result[int, str]]
+
+extend Command:
+    pub def init(name: str, desc: str) -> Command:
+        mut cmd: Command = Command()
+        cmd.name = name
+        cmd.description = desc
+        cmd.flags = List[Flag].init()
+        cmd.arguments = List[Arg].init()
+        cmd.subcommands = List[Command].init()
+        cmd.handler = Option.None
+        return cmd
+
+    pub def description(self, desc: str) -> Command:
+        self.description = desc
+        return self
+
+    # Core assignment methods
+    pub def flag(self, flag: Flag) -> Command:
+        self.flags.append(flag)
+        return self
+
+    pub def subcommand(self, subcommand: Command) -> Command:
+        self.subcommands.append(subcommand)
+        return self
+
+    pub def arg(self, arg: Arg) -> Command:
+        self.arguments.append(arg)
+        return self
+
+    pub def handler(self, fn: lambda) -> Command:
+        self.handler = Option.Some(fn)
+        return self
+
+    # ----------------------------------------------------
+    # DX Shortcut Helpers for Flags
+    # ----------------------------------------------------
+    pub def toggle_flag(self, name: str, desc: str) -> Command:
+        self.flags.append(Flag.toggle(name, desc))
+        return self
+
+    pub def str_flag(self, name: str, desc: str) -> Command:
+        self.flags.append(Flag.str(name, desc))
+        return self
+
+    pub def int_flag(self, name: str, desc: str) -> Command:
+        self.flags.append(Flag.int(name, desc))
+        return self
+
+    # ----------------------------------------------------
+    # DX Shortcut Helpers for Arguments
+    # ----------------------------------------------------
+    pub def str_arg(self, name: str, desc: str) -> Command:
+        self.arguments.append(Arg.init(name, desc))
+        return self
+
+    pub def opt_str_arg(self, name: str, desc: str) -> Command:
+        mut arg: Arg = Arg.init(name, desc)
+        arg.optional = true
+        self.arguments.append(arg)
+        return self
+
+    pub def int_arg(self, name: str, desc: str) -> Command:
+        self.arguments.append(Arg.number(name, desc))
+        return self
+
+    pub def print_help(self, path: List[str]) -> void:
+        mut cmd_path: str = path.join(" ")
+        if cmd_path == "":
+            cmd_path = self.name
+
+        print(f"Usage: {cmd_path} [OPTIONS] [COMMAND]")
+        print("")
+        print(self.description)
+        print("")
+
+        if self.arguments.len() > 0:
+            print("Arguments:")
+            for arg in self.arguments:
+                mut opt_str: str = ""
+                if arg.optional:
+                    opt_str = " (optional)"
+                print(f"  {arg.name}{opt_str}    {arg.description}")
+            print("")
+
+        mut has_custom_help: bool = false
+        for f in self.flags:
+            if f.name == "help" or (f.shorthand.is_some() and f.shorthand.unwrap() == "h"):
+                has_custom_help = true
+                break
+
+        if self.flags.len() > 0 or not has_custom_help:
+            print("Flags:")
+            if not has_custom_help:
+                print("  -h, --help    Print this help message")
+
+            for f in self.flags:
+                mut short_str: str = "    "
+                if f.shorthand.is_some():
+                    short_str = f"-{f.shorthand.unwrap()}, "
+                print(f"  {short_str}--{f.name}    {f.description}")
+            print("")
+
+        if self.subcommands.len() > 0:
+            print("Commands:")
+            for sub in self.subcommands:
+                print(f"  {sub.name}    {sub.description}")
+            print("")
+
+
+extend Command:
+    pub def parse(self, args: List[str]) throws str -> ParseResult:
+        mut cmd: List[str] = List[str].init()
+        mut i: int = 0
+
+        mut current_cmd: Command = self
+        mut item: str = str()
+
+        mut parsed: ParseResult = ParseResult.init()
+
+        # take the command name
+        while i < args.len():
+            item = args.get(i)
+            mut found_cmd: bool = false
+            for subcmd in current_cmd.subcommands:
+                if subcmd.name == item:
+                    current_cmd = subcmd
+                    found_cmd = true
+                    break
+            if found_cmd:
+                cmd.append(f"{current_cmd.name}")
+                i += 1
+            else:
+                break
+        parsed.command_string = cmd
+
+        mut has_custom_help: bool = false
+        for f in current_cmd.flags:
+            if f.name == "help" or (f.shorthand.is_some() and f.shorthand.unwrap() == "h"):
+                has_custom_help = true
+                break
+
+        # Peek to see if the user triggered help
+        mut peek_idx: int = i
+        while peek_idx < args.len():
+            mut peek_item: str = args.get(peek_idx)
+            if peek_item == "-h" or peek_item == "--help":
+                if not has_custom_help:
+                    parsed.is_help = true
+                break
+            peek_idx += 1
+
+        # parse arguments
+        mut j: int = 0
+
+        while j < current_cmd.arguments.len():
+            mut arg: Arg = current_cmd.arguments.get(j)
+
+            # If we hit a flag prematurely, stop parsing positional args
+            if i < args.len():
+                mut current_item: str = args.get(i)
+                if current_item.starts_with("-"):
+                    if not arg.optional and not parsed.is_help:
+                        raise(f"Missing argument: {arg.name}: {arg.description}")
+                    break
+
+            if i >= args.len():
+                if arg.optional or parsed.is_help:
+                    j += 1
+                    continue
+                else:
+                    raise(f"Missing argument: {arg.name}: {arg.description}")
+            else:
+                if not parsed.is_help:
+                    arg.validate(args.get(i))?
+                parsed.arguments.append(ArgValue.init(arg, args.get(i)))
+                i += 1
+                j += 1
+
+        # parse flags
+        while i < args.len():
+            item = args.get(i)
+
+            if item == "--":
+                i += 1
+                break
+
+            mut is_long: bool = item.starts_with("--")
+            if is_long or item.starts_with("-"):
+                if (item == "-h" or item == "--help") and not has_custom_help:
+                    i += 1
+                    continue
+
+                mut prefix_len: int = 1
+                if is_long:
+                    prefix_len = 2
+
+                mut flag_str: str = item.slice(prefix_len, item.len())
+                mut flag_val: Option[Pointer[char]] = Option[Pointer[char]].None()
+
+                if flag_str.contains("="):
+                    mut idx: int = flag_str.index_of("=")
+                    flag_val = Option.Some(flag_str.slice(idx + 1, flag_str.len()))
+                    flag_str = flag_str.slice(0, idx)
+
+                mut found_flag: Option[Flag] = Option[Flag].None()
+                for f in current_cmd.flags:
+                    if is_long and f.name == flag_str:
+                        found_flag = Option.Some(f)
+                        break
+
+                    if not is_long and f.shorthand.is_some():
+                        if f.shorthand.unwrap() == flag_str:
+                            found_flag = Option.Some(f)
+                            break
+
+                if found_flag.is_none():
+                    raise(f"Unknown flag: {item}")
+
+                mut flag_def: Flag = found_flag.unwrap()
+                mut slice_to_add: Option[Pointer[char]] = Option[Pointer[char]].None()
+
+                if flag_def.toggle:
+                    i += 1
+                else:
+                    if flag_val.is_some():
+                        slice_to_add = flag_val
+                        i += 1
+                    else:
+                        if i + 1 < args.len():
+                            slice_to_add = Option.Some(args.get(i + 1))
+                            i += 2
+                        else:
+                            raise(f"Flag '{item}' requires a value, but none was provided.")
+
+                mut already_parsed: bool = false
+                for parsed_flag in parsed.flags:
+                    if parsed_flag.flag.name == flag_def.name:
+                        already_parsed = true
+                        if slice_to_add.is_some():
+                            parsed_flag.raw_slices.append(slice_to_add.unwrap())
+                        break
+
+                if not already_parsed:
+                    parsed.flags.append(FlagValue.init(flag_def, true, slice_to_add))
+
+            else:
+                raise(f"Unexpected argument: {item}")
+
+        # Populate defaults
+        for f in current_cmd.flags:
+            mut is_present: bool = false
+            for parsed_flag in parsed.flags:
+                if parsed_flag.flag.name == f.name:
+                    is_present = true
+                    break
+
+            if not is_present and f.default_value.is_some():
+                parsed.flags.append(FlagValue.init(f, false, f.default_value))
+
+        parsed.matched_cmd = current_cmd
+
+        return Result.ok(parsed)
